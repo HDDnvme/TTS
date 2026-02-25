@@ -14,7 +14,8 @@ const {
 const gtts = require("gtts");
 const fs = require("fs");
 const path = require("path");
-const { token, prefix = "!" } = require("./config.json");
+const {  prefix = "!" } = require("./config.json");
+
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const queues = new Map();           // guildId → { player, connection, items[], playing }
@@ -273,4 +274,4 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.login(token);
+client.login(process.env.TOKEN);
