@@ -14,7 +14,7 @@ const {
 const gtts = require("gtts");
 const fs = require("fs");
 const path = require("path");
-const {  prefix = "!" } = require("./config.json");
+const {  prefix = "%" } = require("./config.json");
 
 
 // ── State ─────────────────────────────────────────────────────────────────────
