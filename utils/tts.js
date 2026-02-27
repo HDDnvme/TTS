@@ -23,6 +23,15 @@ function getQueue(guildId) {
   return queues.get(guildId);
 }
 
+// ── Get music queue without circular dependency ───────────────────────────────
+function getMusicQueue(guildId) {
+  try {
+    return require("./music").getMusicQueue(guildId);
+  } catch {
+    return null;
+  }
+}
+
 async function speakNext(guildId) {
   const q = getQueue(guildId);
   if (q.playing || q.items.length === 0 || !q.connection) return;
@@ -30,6 +39,15 @@ async function speakNext(guildId) {
   q.playing = true;
   const { text, lang, slow } = q.items.shift();
   const tmpFile = path.join(__dirname, "..", `tts_${Date.now()}.mp3`);
+
+  // ── Pause music if it's playing ───────────────────────────────────────────
+  const mq = getMusicQueue(guildId);
+  const wasMusicPlaying = mq?.playing && !mq?.paused;
+  if (wasMusicPlaying) {
+    mq.player?.pause();
+    // Re-subscribe connection to TTS player
+    q.connection.subscribe(q.player);
+  }
 
   try {
     await new Promise((resolve, reject) => {
@@ -43,17 +61,39 @@ async function speakNext(guildId) {
     q.player.once(AudioPlayerStatus.Idle, () => {
       fs.unlink(tmpFile, () => {});
       q.playing = false;
+
+      // ── Resume music after TTS finishes ────────────────────────────────────
+      if (wasMusicPlaying && mq?.player) {
+        q.connection.subscribe(mq.player);
+        mq.player.unpause();
+        mq.paused = false;
+      }
+
       speakNext(guildId);
     });
 
     q.player.once("error", () => {
       fs.unlink(tmpFile, () => {});
       q.playing = false;
+
+      if (wasMusicPlaying && mq?.player) {
+        q.connection.subscribe(mq.player);
+        mq.player.unpause();
+        mq.paused = false;
+      }
+
       speakNext(guildId);
     });
   } catch (err) {
     console.error("[TTS] Error generating audio:", err);
     q.playing = false;
+
+    if (wasMusicPlaying && mq?.player) {
+      q.connection.subscribe(mq.player);
+      mq.player.unpause();
+      mq.paused = false;
+    }
+
     speakNext(guildId);
   }
 }
@@ -71,6 +111,15 @@ async function joinMemberChannel(message) {
 
   const q = getQueue(message.guildId);
 
+  // ── Reuse music connection if it exists ───────────────────────────────────
+  const mq = getMusicQueue(message.guildId);
+  if (mq?.connection) {
+    if (!q.player) q.player = createAudioPlayer();
+    q.connection = mq.connection;
+    // Only subscribe TTS player temporarily when needed (speakNext handles this)
+    return mq.connection;
+  }
+
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: message.guildId,
@@ -85,9 +134,7 @@ async function joinMemberChannel(message) {
     return null;
   }
 
-  if (!q.player) {
-    q.player = createAudioPlayer();
-  }
+  if (!q.player) q.player = createAudioPlayer();
   connection.subscribe(q.player);
   q.connection = connection;
 
