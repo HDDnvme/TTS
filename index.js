@@ -42,4 +42,4 @@ for (const file of fs.readdirSync(eventsPath).filter((f) => f.endsWith(".js"))) 
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-client.login(token);
+client.login(process.env.TOKEN);
