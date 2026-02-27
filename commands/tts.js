@@ -14,7 +14,7 @@ module.exports = {
       if (!conn) return reply(message, "❌ Join a voice channel first!");
     }
 
-    const { lang = "en", slow = false } = userVoices.get(message.author.id) || {};
+    const { lang = "vi", slow = false } = userVoices.get(message.author.id) || {};
     enqueue(message.guildId, text, lang, slow);
 
     const preview = text.slice(0, 100) + (text.length > 100 ? "…" : "");

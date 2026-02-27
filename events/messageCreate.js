@@ -1,5 +1,6 @@
 const { autoReadChannels, userVoices, getQueue, enqueue } = require("../utils/tts");
-const { prefix } = require("../config.json");
+const config = require("../config.json");
+const prefix = config.prefix ?? "!";
 
 module.exports = {
   name: "messageCreate",
@@ -18,16 +19,15 @@ module.exports = {
     ) {
       const q = getQueue(guildId);
       if (q.connection) {
-        // Only speak if the user is in the same voice channel as the bot
         const botChannelId = q.connection.joinConfig.channelId;
         const userChannelId = message.member?.voice?.channelId;
         if (userChannelId && userChannelId === botChannelId) {
           const { lang = "vi", slow = false } = userVoices.get(message.author.id) || {};
           const name = message.member?.displayName ?? message.author.username;
-          enqueue(guildId, ` ${message.content}`, lang, slow);
+          enqueue(guildId, `${name} says: ${message.content}`, lang, slow);
         }
       }
-      return;
+      return; // always stop here, whether we spoke or not
     }
 
     // ── Command handling ───────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ module.exports = {
     const commandName = args.shift().toLowerCase();
 
     const command = client.commands.get(commandName);
-    if (!command) return; // Unknown command — silently ignore
+    if (!command) return;
 
     try {
       await command.execute(message, args, client);
