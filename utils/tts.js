@@ -58,7 +58,7 @@ async function speakNext(guildId) {
   }
 }
 
-function enqueue(guildId, text, lang = "en", slow = false) {
+function enqueue(guildId, text, lang = "vi", slow = false) {
   const q = getQueue(guildId);
   q.items.push({ text: text.slice(0, 500), lang, slow });
   speakNext(guildId);
