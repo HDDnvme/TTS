@@ -22,9 +22,9 @@ module.exports = {
         const botChannelId = q.connection.joinConfig.channelId;
         const userChannelId = message.member?.voice?.channelId;
         if (userChannelId && userChannelId === botChannelId) {
-          const { lang = "en", slow = false } = userVoices.get(message.author.id) || {};
+          const { lang = "vi", slow = false } = userVoices.get(message.author.id) || {};
           const name = message.member?.displayName ?? message.author.username;
-          enqueue(guildId, `${name} says: ${message.content}`, lang, slow);
+          enqueue(guildId, ` ${message.content}`, lang, slow);
         }
       }
       return;
