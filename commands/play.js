@@ -4,6 +4,9 @@ module.exports = {
   name: "play",
   description: "Play a song or playlist from YouTube, Spotify, or SoundCloud",
   async execute(message, args) {
+    if(message.member.id != "1166922328786075778") {
+      message.reply("mmb")
+    }
     const query = args.join(" ");
     if (!query) return message.reply("❌ Usage: `!play <url or search query>`");
 
