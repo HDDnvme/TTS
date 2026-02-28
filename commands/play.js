@@ -7,7 +7,8 @@ module.exports = {
     if(message.member.id != "1166922328786075778") {
       message.reply("mmb")
     }
-    const query = args.join(" ");
+    else {
+      const query = args.join(" ");
     if (!query) return message.reply("❌ Usage: `!play <url or search query>`");
 
     if (!message.member?.voice?.channel) {
@@ -34,5 +35,7 @@ module.exports = {
     } else {
       return msg.edit(`✅ Added **${tracks.length} tracks** to the queue.`);
     }
+    }
+    
   },
 };
