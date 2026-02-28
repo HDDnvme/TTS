@@ -24,7 +24,7 @@ module.exports = {
         if (userChannelId && userChannelId === botChannelId) {
           const { lang = "vi", slow = false } = userVoices.get(message.author.id) || {};
           const name = message.member?.displayName ?? message.author.username;
-          enqueue(guildId, `${name} says: ${message.content}`, lang, slow);
+          enqueue(guildId, ` ${message.content}`, lang, slow);
         }
       }
       return; // always stop here, whether we spoke or not
