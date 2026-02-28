@@ -9,9 +9,10 @@ const {
   StreamType,
 } = require("@discordjs/voice");
 const { EmbedBuilder } = require("discord.js");
+const { spawn } = require("child_process");
+const { Readable } = require("stream");
 const SpotifyWebApi = require("spotify-web-api-node");
 const scdl = require("soundcloud-downloader").default;
-const ytdl = require("ytdl-core");
 const ytSearch = require("yt-search");
 const config = require("../config.json");
 
@@ -60,6 +61,38 @@ function formatSeconds(s) {
     : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
+// ── yt-dlp stream ─────────────────────────────────────────────────────────────
+const path = require("path");
+const fs2 = require("fs");
+
+function getYtdlpBin() {
+  const localExe = path.join(__dirname, "..", "yt-dlp.exe");
+  if (fs2.existsSync(localExe)) return localExe;
+  const localUnix = path.join(__dirname, "..", "yt-dlp");
+  if (fs2.existsSync(localUnix)) return localUnix;
+  return "yt-dlp"; // fall back to system PATH
+}
+
+function ytdlpStream(url) {
+  const bin = getYtdlpBin();
+  const args = [
+    url,
+    "-f", "bestaudio",
+    "--no-playlist",
+    "-o", "-",
+    "--quiet",
+    "--no-warnings",
+  ];
+
+  // Uncomment below if you get 403 errors and Chrome is closed:
+  // args.push("--cookies-from-browser", "chrome");
+
+  const proc = spawn(bin, args);
+  proc.on("error", (err) => console.error("[yt-dlp] spawn error:", err.message));
+  proc.stderr.on("data", (d) => console.error("[yt-dlp]", d.toString().trim()));
+  return proc.stdout;
+}
+
 // ── Track resolution ──────────────────────────────────────────────────────────
 async function searchYouTube(query) {
   const result = await ytSearch(query);
@@ -91,20 +124,21 @@ async function resolveYouTube(query) {
   }
 
   // Single URL
-  if (ytdl.validateURL(query)) {
-    const info = await ytdl.getBasicInfo(query);
-    const v = info.videoDetails;
+  if (query.match(/youtu\.be\/|youtube\.com\/watch/)) {
+    const result = await ytSearch(query);
+    const v = result.videos[0];
+    if (!v) return [];
     return [{
       title: v.title,
-      url: v.video_url,
-      duration: formatSeconds(parseInt(v.lengthSeconds)),
-      thumbnail: v.thumbnails?.[0]?.url ?? null,
+      url: v.url,
+      duration: v.duration.timestamp,
+      thumbnail: v.thumbnail,
       source: "youtube",
       requestedBy: null,
     }];
   }
 
-  // Search
+  // Search query
   const track = await searchYouTube(query);
   return track ? [track] : [];
 }
@@ -173,19 +207,7 @@ async function createStream(track) {
     return createAudioResource(stream, { inlineVolume: true });
   }
 
-  const stream = ytdl(track.url, {
-    filter: "audioonly",
-    quality: "highestaudio",
-    highWaterMark: 1 << 25,
-    requestOptions: {
-      headers: {
-        // Helps avoid 403s
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Cookie": config.ytCookie ?? "",
-      },
-    },
-  });
-
+  const stream = ytdlpStream(track.url);
   return createAudioResource(stream, {
     inputType: StreamType.Arbitrary,
     inlineVolume: true,
@@ -268,25 +290,68 @@ async function joinAndPlay(message, tracks) {
     connection.subscribe(q.player);
     q.connection = connection;
 
+    // Share connection with TTS so they use the same voice channel
+    try {
+      const ttsUtil = require("./tts");
+      const ttsQ = ttsUtil.getQueue(message.guildId);
+      ttsQ.connection = connection;
+      if (!ttsQ.player) ttsQ.player = require("@discordjs/voice").createAudioPlayer();
+    } catch {}
+
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
+        // Try to reconnect first (e.g. network blip)
         await Promise.race([
           entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
           entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
         ]);
       } catch {
+        // Kicked or disconnected — fully clean up
         connection.destroy();
         q.connection = null;
         q.player = null;
         q.playing = false;
+        q.paused = false;
         q.tracks = [];
         q.current = null;
+
+        // Also clean up TTS state
+        try {
+          const ttsUtil = require("./tts");
+          const ttsQ = ttsUtil.getQueue(message.guildId);
+          ttsQ.connection = null;
+          ttsQ.player = null;
+          ttsQ.playing = false;
+          ttsQ.items = [];
+        } catch {}
+
+        if (q.textChannel) {
+          q.textChannel.send("👋 Disconnected from voice — queue cleared.").catch(() => {});
+        }
       }
     });
   }
 
   q.tracks.push(...tracks);
-  if (!q.playing) playNext(message.guildId);
+
+  if (!q.playing) {
+    // Wait for TTS to finish before starting music
+    const ttsUtil = require("./tts");
+    const ttsQ = ttsUtil.getQueue(message.guildId);
+    if (ttsQ.playing) {
+      const waitForTTS = setInterval(() => {
+        if (!ttsQ.playing) {
+          clearInterval(waitForTTS);
+          q.connection.subscribe(q.player);
+          if (!q.playing) playNext(message.guildId);
+        }
+      }, 250);
+    } else {
+      q.connection.subscribe(q.player);
+      playNext(message.guildId);
+    }
+  }
+
   return q;
 }
 
